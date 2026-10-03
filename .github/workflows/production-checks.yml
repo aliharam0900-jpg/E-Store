@@ -1,0 +1,66 @@
+name: Production Quality & Security Assurance
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-and-test:
+    name: Lint, Typecheck & E2E Validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      NODE_ENV: test
+      NEXT_PUBLIC_SUPABASE_URL: "https://ci-test-mock.supabase.co"
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: "ci-test-mock-anon-key"
+      SUPABASE_SERVICE_ROLE_KEY: "ci-test-mock-service-role-key"
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: "pk_test_mock_ci_key"
+      STRIPE_SECRET_KEY: "sk_test_mock_ci_key"
+      STRIPE_WEBHOOK_SECRET: "whsec_mock_ci_key"
+      RESEND_API_KEY: "re_mock_ci_key"
+      NEXT_PUBLIC_SITE_URL: "http://localhost:3000"
+
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v4
+
+      - name: Initialize Node.js Environment (v20)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install Project Dependencies
+        run: npm ci
+
+      - name: 1. Strict ESLint Code Quality Verification
+        run: npm run lint
+
+      - name: 2. Strict TypeScript Compiler Check
+        run: npx tsc --noEmit
+
+      - name: Install Playwright Chromium Engine & System Dependencies
+        run: npx playwright install --with-deps chromium
+
+      - name: Compile Next.js Production Build
+        run: npm run build
+
+      - name: 3. Execute End-to-End (E2E) Playwright Checkout & Security Suite
+        run: npx playwright test
+
+      - name: Upload Playwright Test Report Artifact
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: playwright-report/
+          retention-days: 14
